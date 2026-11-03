@@ -488,7 +488,7 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_sonymobile_imageprocessor_bypasscamera2_BypassCamera_nativeIsDebugable(
     JNIEnv *, jobject)
 {
-    return JNI_TRUE;
+    return JNI_FALSE;
 }
 
 // ─────────────────────────────────────────────────────
