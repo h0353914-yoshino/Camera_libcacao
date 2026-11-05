@@ -235,6 +235,17 @@ namespace cacao
         }
         // fmt32 != 0 的其他值不設定 bufSize（沿用 0 或 caller 會 setDataSize）
 
+        // BH（msm8998 4.19 / lineage gralloc）的實際分配大小以 gralloc private_handle_t 的 size 為準。
+        // 上面的公式（NV21 對齊 128/32）可能比實際分配大，cacao 會以它做 memcpy 而讀超出映射範圍。
+        // 只在 handle 確定是 gralloc 的 private_handle_t 時才取 size（magic 'gmsm'、fds=2）。
+        // 欄位位置：native_handle data[k] 位於 int index 3 + k；magic = data[2]，size = data[10]。
+        {
+            const int *hd = reinterpret_cast<const int *>(data);
+            const int kGrallocMagic = 'gmsm';
+            if (hd[1] == 2 && hd[2] >= 11 && hd[3 + 2] == kGrallocMagic && hd[3 + 10] > 0)
+                ibBufSize(this) = static_cast<uint32_t>(hd[3 + 10]);
+        }
+
         ibSB(this) = SharedBuffer::create();
     }
 
