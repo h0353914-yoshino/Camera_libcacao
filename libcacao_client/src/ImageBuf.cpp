@@ -307,6 +307,9 @@ namespace cacao
             {
                 alloc_fmt = 0x21;
                 alloc_w = 1;
+                // 空殼 buffer 依整張 NV21 frame 的大小配置（原本只配 stride 一列，copy 會寫入整張 frame 而越界）
+                if (fmt32 == 0x20001)
+                    alloc_size = ((w + 0x7f) & ~0x7f) * (((h / 2 + 0x1f) & ~0x1f) + ((h + 0x1f) & ~0x1f));
             }
 
             // 呼叫 IAllocator::allocate（Ghidra 5506-5535）
