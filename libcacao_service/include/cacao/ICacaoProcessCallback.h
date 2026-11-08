@@ -1,25 +1,19 @@
-// ICacaoProcessCallback.h — android::ICacaoProcessCallback Binder 回呼介面宣告
-// 由 libcacao_client_real.so 提供實際的 ctor/dtor/descriptor
+// ICacaoProcessCallback.h — android::ICacaoProcessCallback 回呼介面宣告（純 C++ 抽象介面，傳輸由 AIDL 負責）
 
 #pragma once
-#include <binder/IInterface.h>
-#include <binder/IBinder.h>
+#include <utils/RefBase.h>
 #include <binder/IMemory.h>
-#include <binder/Parcel.h>
 #include <utils/Vector.h>
 #include <cacao/ProcessCtrlGatewayBase.h>
 
 namespace android
 {
 
-    class ICacaoProcessCallback : public IInterface
+    class ICacaoProcessCallback : public virtual RefBase
     {
     public:
-        ICacaoProcessCallback();
-        virtual ~ICacaoProcessCallback();
+        virtual ~ICacaoProcessCallback() {}
 
-        static const String16 descriptor;
-        virtual const String16 &getInterfaceDescriptor() const;
 
         // vtable slot 4 — transaction 1
         virtual void notifyProgress(const sp<IMemory> &mem,
@@ -29,14 +23,7 @@ namespace android
                                   cacao::ISerialize::SerializedData sd,
                                   android::Vector<cacao::ImageBuf *> *bufs) = 0;
 
-        static sp<ICacaoProcessCallback> asInterface(const sp<IBinder> &obj);
     };
 
-    class BnCacaoProcessCallback : public BnInterface<ICacaoProcessCallback>
-    {
-    public:
-        virtual status_t onTransact(uint32_t code, const Parcel &data,
-                                    Parcel *reply, uint32_t flags) override;
-    };
 
 } // namespace android

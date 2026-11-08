@@ -27,10 +27,6 @@ cc_library_shared {
     vendor_available: true,
 
     srcs: [
-        "src/ICacaoService.cpp",
-        "src/ICacao.cpp",
-        "src/ICacaoClient.cpp",
-        "src/ICacaoProcessCallback.cpp",
         "src/Cacao.cpp",
         "src/CacaoAidlClient.cpp",
         "src/SharedBuffer_ObjectBase.cpp",

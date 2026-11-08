@@ -1,20 +1,8 @@
-// ICacao.h — android::ICacao Binder 介面宣告
-// ICacao 的 ctor/dtor/descriptor/BnCacao::onTransact 由 libcacao_client_real.so 提供
-// 本檔案僅提供 CacaoService::Client 編譯所需的類型宣告
-//
-// BnCacao::onTransact 的 8 個 transaction code:
-//   code 1 → disconnect (vtable+0x10)
-//   code 2 → start (vtable+0x14)
-//   code 3 → stop (vtable+0x18)
-//   code 4 → setConfig (vtable+0x1c)
-//   code 5 → getConfig (vtable+0x20)
-//   code 6 → process with ImageBuf (vtable+0x24)
-//   code 7 → process with ANativeWindow（原為 IGraphicBufferProducer 的 IBinder）
-//   code 8 → cancel (vtable+0x2c)
+// ICacao.h — android::ICacao 連線介面宣告（純 C++ 抽象介面，傳輸由 AIDL 負責）
 
 #pragma once
 #include <android/native_window.h>
-#include <binder/IInterface.h>
+#include <utils/RefBase.h>
 #include <binder/IMemory.h>
 #include <utils/Vector.h>
 #include <cacao/ProcessCtrlGatewayBase.h>
@@ -30,15 +18,11 @@ namespace android
     class ICacaoProcessCallback;
 
     // ICacao — 單一相機連線的 Binder 介面
-    class ICacao : public IInterface
+    class ICacao : public virtual RefBase
     {
     public:
-        ICacao();
-        virtual ~ICacao();
+        virtual ~ICacao() {}
 
-        static sp<ICacao> asInterface(const sp<IBinder> &obj);
-        static const String16 descriptor;
-        virtual const String16 &getInterfaceDescriptor() const;
 
         // vtable slot 4 — tx code 1
         virtual void disconnect() = 0;
@@ -73,11 +57,5 @@ namespace android
         virtual int cancel(int cookie) = 0;
     };
 
-    class BnCacao : public BnInterface<ICacao>
-    {
-    public:
-        virtual status_t onTransact(uint32_t code, const Parcel &data,
-                                    Parcel *reply, uint32_t flags = 0);
-    };
 
 } // namespace android

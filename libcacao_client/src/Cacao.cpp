@@ -2,13 +2,11 @@
 // 依照 libcacao_client.so (ARM 32-bit) Ghidra 反編譯結果 100% 重建
 //
 // 包含:
-//   - Cacao::mService / mServicePid / mLock / mDeathNotifier (靜態全域)
-//   - Cacao::DeathNotifier (Binder 死亡通知)
-//   - Cacao::CacaoProcessCallback (進程結果/進度回呼, BnCacaoProcessCallback)
-//   - Cacao::CacaoClient (主連線客戶端, BnCacaoClient + DeathRecipient)
+//   - Cacao::mService / mServicePid / mLock (靜態全域)
+//   - Cacao::CacaoProcessCallback (進程結果/進度回呼, ICacaoProcessCallback)
+//   - Cacao::CacaoClient (主連線客戶端, ICacaoClient)
 //   - Cacao (facade: getService/create/connect/disconnect/getCaps/...)
 
-#include <binder/IInterface.h>
 #include <binder/IBinder.h>
 #include <binder/IMemory.h>
 #include <cacao/CacaoAidlClient.h>
@@ -108,46 +106,9 @@ namespace android
     sp<ICacaoService> Cacao::mService = nullptr;
     int Cacao::mServicePid = 0;
     pthread_mutex_t Cacao::mServiceLock = PTHREAD_MUTEX_INITIALIZER;
-    sp<Cacao::DeathNotifier> Cacao::mDeathNotifier = nullptr;
 
     // ══════════════════════════════════════════════════════════════
-    // Cacao::DeathNotifier — Binder 死亡通知器
-    // 服務崩潰時清理靜態 singleton 狀態
-    // Object size = 0x0c (vtable + RefBase 8 bytes)
-    // ══════════════════════════════════════════════════════════════
-
-    Cacao::DeathNotifier::DeathNotifier() {}
-    Cacao::DeathNotifier::~DeathNotifier() {}
-
-    // 原始 .so binderDied 邏輯:
-    //   mutex_lock(mLock)
-    //   if mService != null: asBinder(mService).unlinkToDeath(mDeathNotifier, nullptr, 0)
-    //     clear mDeathNotifier sp
-    //   mService.clear(); mServicePid = 0
-    //   ALOGI("cacao service died")
-    //   mutex_unlock(mLock)
-    void Cacao::DeathNotifier::binderDied(const wp<IBinder> &who)
-    {
-        pthread_mutex_lock(&Cacao::mServiceLock);
-        if (Cacao::mService != nullptr)
-        {
-            sp<IBinder> binder = IInterface::asBinder(Cacao::mService);
-            if (binder != nullptr)
-            {
-                binder->unlinkToDeath(
-                    wp<IBinder::DeathRecipient>(Cacao::mDeathNotifier),
-                    nullptr, 0);
-            }
-            Cacao::mDeathNotifier.clear();
-        }
-        Cacao::mService.clear();
-        Cacao::mServicePid = 0;
-        ALOGI("cacao service died");
-        pthread_mutex_unlock(&Cacao::mServiceLock);
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    // Cacao::CacaoProcessCallback — 進度/結果回呼 (BnCacaoProcessCallback)
+    // Cacao::CacaoProcessCallback — 進度/結果回呼 (ICacaoProcessCallback)
     // 包裝 ICBProcessResultListener，用於 CacaoClient::process 呼叫時
     // Object size ≈ 0x1c (vtable+0 BBinder+4 mListener+0x10 mResult+0x14 RefBase+0x18)
     // ══════════════════════════════════════════════════════════════
@@ -203,7 +164,7 @@ namespace android
 
     // ══════════════════════════════════════════════════════════════
     // Cacao::CacaoClient — 主連線客戶端
-    // BnCacaoClient + IBinder::DeathRecipient + ICBProcessResultListener
+    // ICacaoClient + ICBProcessResultListener
     // Object size = 0x30
     // Layout: vtable@0 BBinder@4 DeathRecipient@0x10 Gateway@0x14
     //         mCacao@0x18 mLock@0x1c mListener@0x20 mCookie@0x24 RefBase@0x28
@@ -259,13 +220,6 @@ namespace android
         reinterpret_cast<DtorFn>(vt[4 / 4])(event);
     }
 
-    // ── binderDied ────────────────────────────────────────────────
-    // 原始 .so CacaoClient::binderDied: ALOGI("cacao died")
-    void Cacao::CacaoClient::binderDied(const wp<IBinder> &who)
-    {
-        ALOGI("cacao died");
-    }
-
     // ── subscribeEvents ───────────────────────────────────────────
     // 原始 .so: mutex_lock → mListener=p, mCookie=cookie → mutex_unlock
     int Cacao::CacaoClient::subscribeEvents(
@@ -301,7 +255,7 @@ namespace android
             pthread_mutex_unlock(&mLock);
             return -0x6b;
         }
-        // svc->connect(this) — 將本 BnCacaoClient 傳給服務
+        // svc->connect(this) — 將本 ICacaoClient 傳給服務
         sp<ICacao> cacao = svc->connect(sp<ICacaoClient>(this));
         mCacao = cacao;
         if (mCacao == nullptr)
@@ -310,15 +264,7 @@ namespace android
             return -0x6f;
         }
         // linkToDeath: 當服務的 ICacao binder 死亡時通知 CacaoClient
-        sp<IBinder> binder = IInterface::asBinder(mCacao);
-        if (binder != nullptr)
-        {
-            binder->linkToDeath(sp<IBinder::DeathRecipient>(this), nullptr, 0);
-        }
-        else
-        {
-            cacaoAidlLinkCacaoDeath(mCacao);
-        }
+        cacaoAidlLinkCacaoDeath(mCacao);
         pthread_mutex_unlock(&mLock);
         return 0;
     }
@@ -336,16 +282,7 @@ namespace android
         pthread_mutex_lock(&mLock);
         if (mCacao != nullptr)
         {
-            sp<IBinder> binder = IInterface::asBinder(mCacao);
-            if (binder != nullptr)
-            {
-                binder->unlinkToDeath(
-                    wp<IBinder::DeathRecipient>(this), nullptr, 0);
-            }
-            else
-            {
-                cacaoAidlUnlinkCacaoDeath(mCacao);
-            }
+            cacaoAidlUnlinkCacaoDeath(mCacao);
             mCacao->disconnect();
             mCacao.clear();
         }
@@ -814,18 +751,14 @@ namespace android
     //     else:
     //       mService = ICacaoService::asInterface(binder)
     //       mServicePid = mService->getServicePid()
-    //       if mDeathNotifier == null:
-    //         mDeathNotifier = new DeathNotifier()
-    //         asBinder(mService).linkToDeath(mDeathNotifier)
     //   mutex_unlock(mLock)
     // ══════════════════════════════════════════════════════════════
 
-    // AIDL 服務死亡通知（取代 DeathNotifier::binderDied 的 binder 版本）
+    // AIDL 服務死亡通知
     static void onAidlServiceDied()
     {
         pthread_mutex_lock(&Cacao::mServiceLock);
         Cacao::mService.clear();
-        Cacao::mDeathNotifier.clear();
         Cacao::mServicePid = 0;
         ALOGI("cacao service died");
         pthread_mutex_unlock(&Cacao::mServiceLock);
@@ -844,10 +777,6 @@ namespace android
             else
             {
                 mServicePid = mService->getServicePid();
-                if (mDeathNotifier == nullptr)
-                {
-                    mDeathNotifier = new DeathNotifier();
-                }
             }
         }
         pthread_mutex_unlock(&mServiceLock);

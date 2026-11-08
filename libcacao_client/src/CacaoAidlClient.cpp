@@ -42,7 +42,6 @@ namespace
     namespace aidlns = aidl::vendor::somc::cacao;
 
     const char *kServiceName = "vendor.somc.cacao.ICacaoService/default";
-    const char *kAidlCacaoDescriptor = "vendor.somc.cacao.ICacao(aidl)";
 
     // ── server → app：事件回呼 ───────────────────────────────────
     class ClientStub : public aidlns::BnCacaoClient
@@ -133,12 +132,6 @@ namespace
         {
         }
 
-        const android::String16 &getInterfaceDescriptor() const override
-        {
-            static const android::String16 d(kAidlCacaoDescriptor);
-            return d;
-        }
-
         AIBinder *aibinder() const { return mCacao->asBinder().get(); }
 
         void disconnect() override { mCacao->disconnect(); }
@@ -219,9 +212,6 @@ namespace
             return st.isOk() ? ret : -1;
         }
 
-    protected:
-        android::IBinder *onAsBinder() override { return nullptr; }
-
     private:
         std::shared_ptr<aidlns::ICacao> mCacao;
         std::shared_ptr<aidlns::BnCacaoClient> mClientKeepAlive;
@@ -267,9 +257,6 @@ namespace
         }
 
         AIBinder *aibinder() const { return mSvc->asBinder().get(); }
-
-    protected:
-        android::IBinder *onAsBinder() override { return nullptr; }
 
     private:
         std::shared_ptr<aidlns::ICacaoService> mSvc;
@@ -327,7 +314,7 @@ namespace android
 
     bool cacaoAidlIsCacao(const sp<ICacao> &cacao)
     {
-        return cacao != nullptr && cacao->getInterfaceDescriptor() == String16(kAidlCacaoDescriptor);
+        return cacao != nullptr;
     }
 
     void cacaoAidlLinkCacaoDeath(const sp<ICacao> &cacao)

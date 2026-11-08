@@ -37,7 +37,6 @@ namespace
     using namespace android;
 
     const char *kServiceName = "vendor.somc.cacao.ICacaoService/default";
-    const char *kAidlClientDescriptor = "vendor.somc.cacao.ICacaoClient(aidl)";
 
     // ── 死亡通知 cookie ──────────────────────────────────────────
     struct DeathCookie
@@ -74,12 +73,6 @@ namespace
 
         ~AidlClientProxy() override { delete static_cast<DeathCookie *>(mCookie); }
 
-        const String16 &getInterfaceDescriptor() const override
-        {
-            static const String16 d(kAidlClientDescriptor);
-            return d;
-        }
-
         void notifyEvent(int eventType, const sp<IMemory> &mem,
                          cacao::ISerialize::SerializedData sd) override
         {
@@ -103,9 +96,6 @@ namespace
                 AIBinder_unlinkToDeath(mClient->asBinder().get(), clientRecipient(), mCookie);
             }
         }
-
-    protected:
-        IBinder *onAsBinder() override { return nullptr; }
 
     private:
         std::shared_ptr<aidlns::ICacaoClient> mClient;
@@ -147,9 +137,6 @@ namespace
                 }
             }
         }
-
-    protected:
-        IBinder *onAsBinder() override { return nullptr; }
 
     private:
         std::shared_ptr<aidlns::ICacaoProcessCallback> mCb;
@@ -337,7 +324,7 @@ namespace android
 
     bool cacaoAidlIsClient(const sp<ICacaoClient> &client)
     {
-        return client != nullptr && client->getInterfaceDescriptor() == String16(kAidlClientDescriptor);
+        return client != nullptr;
     }
 
     void cacaoAidlLinkClientDeath(const sp<ICacaoClient> &client, const sp<CacaoService> &svc)

@@ -6,7 +6,6 @@
 
 #include <stdint.h>
 #include <pthread.h>
-#include <binder/BinderService.h>
 #include <binder/IBinder.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
@@ -78,17 +77,13 @@ namespace android
     using ::android::hardware::Return;
 
     class CacaoService
-        : public BnCacaoService,
-          public BinderService<CacaoService>,
-          public IBinder::DeathRecipient,
+        : public ICacaoService,
           public virtual hidl::manager::V1_0::IServiceNotification,
           public virtual hardware::hidl_death_recipient
     {
     public:
         class Client; // 前向宣告，完整定義在下方
 
-        // BinderService 所需
-        static const char *getServiceName();
         static void instantiate();
 
         CacaoService();
@@ -104,14 +99,9 @@ namespace android
 
         // CacaoService 自身方法
         void registerClient(const sp<Client> &client);
-        void unregisterClient(const sp<IBinder> &binder);
         void unregisterClient(const sp<ICacaoClient> &client);
 
-        virtual status_t onTransact(uint32_t code, const Parcel &data,
-                                    Parcel *reply, uint32_t flags = 0) override;
-        virtual status_t dump(int fd, const Vector<String16> &args);
         virtual void onFirstRef();
-        void binderDied(const wp<IBinder> &who);
 
         // HIDL 回呼
         virtual Return<void> onRegistration(
@@ -128,7 +118,7 @@ namespace android
 
         // ── Client 巢狀類別 ──────────────────────
         class Client
-            : public BnCacao,
+            : public ICacao,
               public ::cacao::ICBProcessEventListener,
               public ::cacao::ICBProcessResultListener
         {

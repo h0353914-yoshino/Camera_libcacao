@@ -6,7 +6,6 @@
 
 #include <stdint.h>
 #include <pthread.h>
-#include <binder/IInterface.h>
 #include <binder/IBinder.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
@@ -51,20 +50,13 @@ namespace android
         virtual int cancel(void *cookie) = 0;
     };
 
-    // ── android::Cacao::DeathNotifier ────────────────────────────
-    // Binder 死亡通知器：服務崩潰時清理靜態 singleton 狀態
-    // sizeof = 0x0c (vtable+RefBase)
-    // 物件佈局:
-    //   +0x00: DeathNotifier vtable ptr (IBinder::DeathRecipient chain)
-    //   +0x04: RefBase embedded (8 bytes)
-    // 靜態成員由 getService() 建立並 linkToDeath 到服務 binder
 
     // ── android::Cacao::CacaoProcessCallback ─────────────────────
     // 進度/結果回呼：包裝 ICBProcessResultListener，透過 Binder 回報處理結果
     // sizeof = 0x?? (根據 Ghidra 重建)
 
     // ── android::Cacao::CacaoClient ──────────────────────────────
-    // 客戶端 Binder stub：即 BnCacaoClient 實作
+    // 客戶端：ICacaoClient 實作
     // 也負責 forward start/stop/process 等操作給 ICacao proxy
     // sizeof = 0x30
     // 物件佈局（依 Ghidra ctor 驗證）:
@@ -89,7 +81,6 @@ namespace android
     //   mService: sp<ICacaoService>   (全域 singleton)
     //   mServicePid: int              (服務 PID，用於 isSameProcess 判斷)
     //   mServiceLock: pthread_mutex_t  (保護 mService 初始化)
-    //   mDeathNotifier: sp<...>        (DeathNotifier sp，linkToDeath 用)
 
     class Cacao
     {
@@ -97,7 +88,6 @@ namespace android
         // ── 巢狀類別前向宣告 ──
         class CacaoClient;
         class CacaoProcessCallback;
-        class DeathNotifier;
 
         Cacao();
         virtual ~Cacao();
@@ -106,7 +96,6 @@ namespace android
         static sp<ICacaoService> mService;
         static int mServicePid;
         static pthread_mutex_t mServiceLock;
-        static sp<DeathNotifier> mDeathNotifier; // 服務死亡通知器
 
         // ── 靜態方法 ──
         static void getService(); // 查找 cacao 服務並初始化 mService
@@ -152,36 +141,22 @@ namespace android
         // ── 欄位 ── (+0x04)
         sp<CacaoClient> mCacaoClient; // sp<> 管理，避免 linkToDeath sp<> 對決型後造成雙重析構
 
-        // ── DeathNotifier ── (singleton，注意不是 mCallback 本身)
-        class DeathNotifier : public IBinder::DeathRecipient
-        {
-        public:
-            DeathNotifier();
-            virtual ~DeathNotifier();
-            void binderDied(const wp<IBinder> &who) override;
-        };
-
         // ── CacaoClient ──
         // 繼承順序決定 vtable 偏移：
-        //   +0x00: BnCacaoClient (primary)
-        //   +0x10: IBinder::DeathRecipient
+        //   +0x00: ICacaoClient (primary)
         //   +0x14: ICacaoGateway（生成 _ZThn20_* thunks）
         class CacaoClient
-            : public BnCacaoClient,
-              public IBinder::DeathRecipient,
+            : public ICacaoClient,
               public ICacaoGateway
         {
         public:
             CacaoClient();
             virtual ~CacaoClient();
 
-            // ── ICacaoClient 回呼（從 BnCacaoClient） ──
+            // ── ICacaoClient 回呼（從 ICacaoClient） ──
             virtual void notifyEvent(int eventType,
                                      const sp<IMemory> &mem,
                                      cacao::ISerialize::SerializedData sd) override;
-
-            // ── IBinder::DeathRecipient ──
-            virtual void binderDied(const wp<IBinder> &who) override;
 
             // ── 非虛擬方法 ──
             int connect(const sp<ICacaoService> &svc);
@@ -224,9 +199,9 @@ namespace android
 
         // ── CacaoProcessCallback ──
         // 包裝 ICBProcessResultListener，透過 Binder 轉送進度/結果
-        // 繼承 BnCacaoProcessCallback (ICacaoProcessCallback 實作)
+        // 實作 ICacaoProcessCallback
         // sizeof ≈ 0x1c (vtable, BBinder, mListener@0x10, mResult@0x14, RefBase@0x18)
-        class CacaoProcessCallback : public BnCacaoProcessCallback
+        class CacaoProcessCallback : public ICacaoProcessCallback
         {
         public:
             CacaoProcessCallback(cacao::ICBProcessResultListener *listener,

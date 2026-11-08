@@ -51,8 +51,6 @@ namespace android
     // CacaoService
     // ════════════════════════════════════════════════════════════
 
-    const char *CacaoService::getServiceName() { return "cacao"; }
-
     CacaoService::CacaoService()
     {
         pthread_mutex_init(&mLock, NULL);
@@ -87,12 +85,6 @@ namespace android
     void CacaoService::onFirstRef()
     {
         // 原始 .so: 空實作（直接 return）
-    }
-
-    status_t CacaoService::dump(int /*fd*/, const Vector<String16> & /*args*/)
-    {
-        // 原始 .so: 空實作（直接 return）
-        return NO_ERROR;
     }
 
     // ── connect ──────────────────────────────────────────────
@@ -448,31 +440,26 @@ namespace android
         return (ret >= 0) ? jpegSize : ret;
     }
 
-    // ── onTransact ───────────────────────────────────────────
-    status_t CacaoService::onTransact(uint32_t code, const Parcel &data,
-                                      Parcel *reply, uint32_t flags)
-    {
-        // 原始 .so: 只對 tx code 1 (connect) 做權限檢查（呼叫方是否持有
-        // android.permission.CAMERA），透過 android::checkCallingPermission()。
-        //
-        // 這裡拿掉了：那個 API（以及底層的 IPermissionController／
-        // PermissionCache）在 AOSP 裡明確標示「not accessible to vendors」——
-        // vendor 變體的 libbinder 根本不會把這個符號編進去
-        // （frameworks/native/libs/binder/IServiceManager.cpp 用
-        // #if !defined(__ANDROID_VNDK__) 整段包住實作），無法在 cacaoserver
-        // 現在所在的 vendor 分割區使用。原版能直接查，是因為當年 cacaoserver
-        // 跟呼叫方同在一個沒有切分 system/vendor 的分割區。
-        //
-        // 取代方案：sepolicy（vendor/sony/camera/sepolicy/cacaoserver.te +
-        // semccamera_app.te）明確把 cacaoserver_service 的存取權限收在只有
-        // SemcCameraUI 專屬 domain（semccamera_app）能用，其他任何
-        // priv_app/platform_app 連 service_manager find 這一步都會被擋。這是
-        // Treble 架構下這類存取控制該做的層級（HAL/vendor 元件用 SELinux MAC
-        // 把關，而不是查 Android permission 字串），語意上也比原本的檢查更嚴
-        // 格：原本只要持有 CAMERA 權限的任何 app 都能連，現在只有這一支 app
-        // 能連。
-        return BnCacaoService::onTransact(code, data, reply, flags);
-    }
+    // ── 連線權限檢查說明（原 onTransact）─────────────────────
+    // 原始 .so: 只對 tx code 1 (connect) 做權限檢查（呼叫方是否持有
+    // android.permission.CAMERA），透過 android::checkCallingPermission()。
+    //
+    // 這裡拿掉了：那個 API（以及底層的 IPermissionController／
+    // PermissionCache）在 AOSP 裡明確標示「not accessible to vendors」——
+    // vendor 變體的 libbinder 根本不會把這個符號編進去
+    // （frameworks/native/libs/binder/IServiceManager.cpp 用
+    // #if !defined(__ANDROID_VNDK__) 整段包住實作），無法在 cacaoserver
+    // 現在所在的 vendor 分割區使用。原版能直接查，是因為當年 cacaoserver
+    // 跟呼叫方同在一個沒有切分 system/vendor 的分割區。
+    //
+    // 取代方案：sepolicy（vendor/sony/camera/sepolicy/cacaoserver.te +
+    // semccamera_app.te）明確把 cacaoserver_service 的存取權限收在只有
+    // SemcCameraUI 專屬 domain（semccamera_app）能用，其他任何
+    // priv_app/platform_app 連 service_manager find 這一步都會被擋。這是
+    // Treble 架構下這類存取控制該做的層級（HAL/vendor 元件用 SELinux MAC
+    // 把關，而不是查 Android permission 字串），語意上也比原本的檢查更嚴
+    // 格：原本只要持有 CAMERA 權限的任何 app 都能連，現在只有這一支 app
+    // 能連。
 
     // ── registerClient ───────────────────────────────────────
     void CacaoService::registerClient(const sp<Client> &client)
@@ -496,14 +483,7 @@ namespace android
             // 中間沒有任何 null 檢查——原版就假設 getClient() 必為非 null，
             // 這裡不另外加防護，行為與原版一致。
             sp<ICacaoClient> appClient = client->getClient();
-            if (cacaoAidlIsClient(appClient))
-            {
                 cacaoAidlLinkClientDeath(appClient, this);
-            }
-            else
-            {
-                IInterface::asBinder(appClient)->linkToDeath(this);
-            }
         }
         pthread_mutex_unlock(&mClientLock);
     }
@@ -528,39 +508,6 @@ namespace android
             }
         }
         pthread_mutex_unlock(&mClientLock);
-    }
-
-    // ── unregisterClient ─────────────────────────────────────
-    void CacaoService::unregisterClient(const sp<IBinder> &binder)
-    {
-        pthread_mutex_lock(&mClientLock);
-        for (List<sp<Client>>::iterator it = mClients.begin();
-             it != mClients.end(); ++it)
-        {
-            // 原版（Ghidra unregisterClient @ 0x1ab54）在取 getClient() 之前會先
-            // 檢查 list 裡這個 sp 本身是否為 null（`if (*(int **)this_00 != 0)`），
-            // 為 null 就跳過、繼續走下一個節點。
-            if (*it == NULL)
-            {
-                continue;
-            }
-            // 比對基準跟 registerClient 的 linkToDeath 一致：App 端的 binder
-            if (IInterface::asBinder((*it)->getClient()) == binder)
-            {
-                binder->unlinkToDeath(this);
-                it->clear();
-                mClients.erase(it);
-                break;
-            }
-        }
-        pthread_mutex_unlock(&mClientLock);
-    }
-
-    // ── binderDied ───────────────────────────────────────────
-    void CacaoService::binderDied(const wp<IBinder> &who)
-    {
-        sp<IBinder> promoted = who.promote();
-        unregisterClient(promoted);
     }
 
     // ── onRegistration (IServiceNotification) ────────────────
@@ -772,10 +719,7 @@ namespace android
             sp<CacaoService> service = mService;
             if (service != NULL)
             {
-                if (cacaoAidlIsClient(mClient))
-                    service->unregisterClient(mClient);
-                else
-                    service->unregisterClient(IInterface::asBinder(mClient));
+service->unregisterClient(mClient);
             }
             mClient = NULL;
             pthread_mutex_unlock(&mMutexClient);

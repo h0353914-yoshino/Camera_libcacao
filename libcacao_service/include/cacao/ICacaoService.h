@@ -1,11 +1,7 @@
-// ICacaoService.h — android::ICacaoService 介面宣告
-// 依照 libcacao_client.so 反編譯結果重建
-// ICacaoService 的 ctor/dtor/descriptor 由 libcacao_client_real.so 提供
-// BnCacaoService::onTransact 也由 libcacao_client_real.so 提供
-// 本檔案僅提供 CacaoService 編譯所需的類型宣告
+// ICacaoService.h — android::ICacaoService 介面宣告（純 C++ 抽象介面，傳輸由 AIDL 負責）
 
 #pragma once
-#include <binder/IInterface.h>
+#include <utils/RefBase.h>
 #include <binder/IMemory.h>
 #include <cacao/ProcessCtrlGatewayBase.h>
 
@@ -32,15 +28,11 @@ namespace android
     //   code 2 → getServicePid (vtable+0x14)
     //   code 3 → getCaps (vtable+0x18)
     //   code 4 → getJpegBufferSize (vtable+0x1c)
-    class ICacaoService : public IInterface
+    class ICacaoService : public virtual RefBase
     {
     public:
-        ICacaoService();
-        virtual ~ICacaoService();
+        virtual ~ICacaoService() {}
 
-        static sp<ICacaoService> asInterface(const sp<IBinder> &obj);
-        static const String16 descriptor;
-        virtual const String16 &getInterfaceDescriptor() const;
 
         // vtable slot 4 (offset +0x10) — tx code 1
         virtual sp<ICacao> connect(const sp<ICacaoClient> &client) = 0;
@@ -54,13 +46,5 @@ namespace android
         virtual int getJpegBufferSize(cacao::ImageSize size) = 0;
     };
 
-    // BnCacaoService — Binder native stub
-    // onTransact 由 libcacao_client_real.so 提供
-    class BnCacaoService : public BnInterface<ICacaoService>
-    {
-    public:
-        virtual status_t onTransact(uint32_t code, const Parcel &data,
-                                    Parcel *reply, uint32_t flags = 0);
-    };
 
 } // namespace android
