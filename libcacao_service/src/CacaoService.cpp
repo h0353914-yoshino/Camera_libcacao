@@ -5,7 +5,9 @@
 #define LOG_TAG "CacaoService"
 
 #include <cacao/CacaoService.h>
+#include <cacao/CacaoAidlServer.h>
 #include <android/log.h>
+#include <android/binder_ibinder.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
 #include <cacao/ProcessCtrlGatewayBase.h>
@@ -19,7 +21,7 @@ namespace cacao
         static ICacaoGateway *create();
         static ProcessModeBase *createMode(ISerialize::SerializedData *data);
         static ProcessParamBase *createParam(ISerialize::SerializedData *data);
-        static ProcessParamBase *createParam(const android::sp<android::IBinder> &binder,
+        static ProcessParamBase *createParam(ANativeWindow *window,
                                              ISerialize::SerializedData *data);
         static ProcessResultBase *createResult(ISerialize::SerializedData *data);
         static ProcessConfigBase *createConfig(unsigned int configId,
@@ -77,7 +79,9 @@ namespace android
 
     void CacaoService::instantiate()
     {
-        BinderService<CacaoService>::publish();
+        sp<CacaoService> svc = new CacaoService();
+        // stable AIDL 服務：vendor.somc.cacao.ICacaoService/default。
+        cacaoAidlPublish(svc);
     }
 
     void CacaoService::onFirstRef()
@@ -96,7 +100,7 @@ namespace android
     {
         pthread_mutex_lock(&mLock);
 
-        Client *c = new Client(this, client, IPCThreadState::self()->getCallingPid());
+        Client *c = new Client(this, client, AIBinder_getCallingPid());
         sp<Client> spClient(c);
         registerClient(spClient);
 
@@ -113,13 +117,13 @@ namespace android
     // ── getClientPid ─────────────────────────────────────────
     pid_t CacaoService::getClientPid()
     {
-        return IPCThreadState::self()->getCallingPid();
+        return AIBinder_getCallingPid();
     }
 
     // ── getClientUid ─────────────────────────────────────────
     uid_t CacaoService::getClientUid()
     {
-        return IPCThreadState::self()->getCallingUid();
+        return AIBinder_getCallingUid();
     }
 
     // ── getCaps ──────────────────────────────────────────────
@@ -491,7 +495,37 @@ namespace android
             //   (*pcVar1)(local_34, recipient, 0, 0);
             // 中間沒有任何 null 檢查——原版就假設 getClient() 必為非 null，
             // 這裡不另外加防護，行為與原版一致。
-            IInterface::asBinder(client->getClient())->linkToDeath(this);
+            sp<ICacaoClient> appClient = client->getClient();
+            if (cacaoAidlIsClient(appClient))
+            {
+                cacaoAidlLinkClientDeath(appClient, this);
+            }
+            else
+            {
+                IInterface::asBinder(appClient)->linkToDeath(this);
+            }
+        }
+        pthread_mutex_unlock(&mClientLock);
+    }
+
+    // ── unregisterClient（AIDL 版：以 ICacaoClient 物件比對）────────
+    void CacaoService::unregisterClient(const sp<ICacaoClient> &client)
+    {
+        pthread_mutex_lock(&mClientLock);
+        for (List<sp<Client>>::iterator it = mClients.begin();
+             it != mClients.end(); ++it)
+        {
+            if (*it == NULL)
+            {
+                continue;
+            }
+            if ((*it)->getClient() == client)
+            {
+                cacaoAidlUnlinkClientDeath(client);
+                it->clear();
+                mClients.erase(it);
+                break;
+            }
         }
         pthread_mutex_unlock(&mClientLock);
     }
@@ -701,7 +735,7 @@ namespace android
     {
         pthread_mutex_lock(&mMutexDisconnect);
 
-        pid_t callingPid = IPCThreadState::self()->getCallingPid();
+        pid_t callingPid = AIBinder_getCallingPid();
         if (callingPid != mCallingPid && callingPid != getpid())
         {
             pthread_mutex_unlock(&mMutexDisconnect);
@@ -738,7 +772,10 @@ namespace android
             sp<CacaoService> service = mService;
             if (service != NULL)
             {
-                service->unregisterClient(IInterface::asBinder(mClient));
+                if (cacaoAidlIsClient(mClient))
+                    service->unregisterClient(mClient);
+                else
+                    service->unregisterClient(IInterface::asBinder(mClient));
             }
             mClient = NULL;
             pthread_mutex_unlock(&mMutexClient);
@@ -961,7 +998,7 @@ namespace android
     // ── process (with IBinder) ───────────────────────────────
     int CacaoService::Client::process(const sp<IMemory> &paramMem,
                                       cacao::ISerialize::SerializedData paramSd,
-                                      const sp<IBinder> &binder,
+                                      ANativeWindow *window,
                                       const sp<IMemory> & /*resultMem*/,
                                       cacao::ISerialize::SerializedData resultSd,
                                       int flags,
@@ -979,7 +1016,7 @@ namespace android
         cacao::ProcessParamBase *param = NULL;
         if (paramMem != NULL)
         {
-            param = cacao::ProcessFactoryInternal::createParam(binder, &paramSd);
+            param = cacao::ProcessFactoryInternal::createParam(window, &paramSd);
             if (param == NULL)
             {
                 pthread_mutex_unlock(&mMutexDisconnect);
@@ -1004,7 +1041,7 @@ namespace android
         mRequestList.push_back(req);
         pthread_mutex_unlock(&mMutexRequest);
 
-        if (binder == NULL)
+        if (window == NULL)
         {
             static_cast<cacao::ICacaoGateway *>(mProcess)->processAsync(
                 param, NULL, static_cast<cacao::ICBProcessResultListener *>(this), result);
@@ -1356,10 +1393,10 @@ namespace cacao
     }
 
     ProcessParamBase *ProcessFactoryInternal::createParam(
-        const android::sp<android::IBinder> &binder,
+        ANativeWindow *window,
         ISerialize::SerializedData *sd)
     {
-        return ProcessCtrlGatewayFactory::createParam(binder, sd);
+        return ProcessCtrlGatewayFactory::createParam(window, sd);
     }
 
     ProcessResultBase *ProcessFactoryInternal::createResult(ISerialize::SerializedData *sd)

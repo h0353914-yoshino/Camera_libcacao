@@ -1,0 +1,39 @@
+// cacaoserver — vendor 版常駐程式（取代 Sony 預編譯 binary）
+cc_binary {
+    name: "cacaoserver",
+    owner: "sony",
+    defaults: ["libcacao_32bit_build_defaults"],
+    vendor: true,
+    compile_multilib: "32",
+
+    srcs: ["main.cpp"],
+    init_rc: ["cacaoserver.rc"],
+
+    header_libs: [
+        "libcacao_service_headers",
+        "libcacao_client_headers",
+        "libcacao_process_ctrl_gateway_headers",
+        "libbase_headers",
+        "libnativebase_headers",
+        "libsystem_headers",
+        "libcutils_headers",
+    ],
+
+    shared_libs: [
+        "libbinder_ndk",
+        "libnativewindow",
+        "libhidlbase",
+        "libutils",
+        "libcutils",
+        "liblog",
+        "libbinder",
+        "libcacao_service",
+        "android.hidl.base@1.0",
+        "android.hidl.manager@1.0",
+        "vendor.somc.hardware.camera.provider@1.0",
+        "vendor.somc.hardware.camera.cacao@3.0",
+        "vendor.somc.hardware.camera.cacao@3.1",
+    ],
+
+    cflags: ["-DLIBCACAO_SOONG_BUILD"],
+}

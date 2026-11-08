@@ -205,27 +205,14 @@ namespace android
             return (int)read_reply_intptr(reply);
         }
 
-        // code 7: process(paramMem, paramSd, binder, resultMem, resultSd, flags, cb) → int
-        // 原始 .so: 類似 code 6 但用 IBinder 代替 bufs
-        virtual int process(const sp<IMemory> &paramMem,
-                            cacao::ISerialize::SerializedData paramSd,
-                            const sp<IBinder> &binder,
-                            const sp<IMemory> &resultMem,
-                            cacao::ISerialize::SerializedData resultSd,
-                            int flags,
-                            const sp<ICacaoProcessCallback> &callback) override
+        // code 7：原本傳 IGraphicBufferProducer 的 IBinder；已改為 AIDL 的 android.view.Surface，
+        // 舊 libbinder 傳輸不再支援此呼叫。
+        virtual int process(const sp<IMemory> &, cacao::ISerialize::SerializedData,
+                            ANativeWindow *, const sp<IMemory> &,
+                            cacao::ISerialize::SerializedData, int,
+                            const sp<ICacaoProcessCallback> &) override
         {
-            Parcel data, reply;
-            data.writeInterfaceToken(ICacao::getInterfaceDescriptor());
-            data.writeStrongBinder(IInterface::asBinder(paramMem));
-            write_sd(data, paramSd);
-            data.writeStrongBinder(binder);
-            data.writeStrongBinder(IInterface::asBinder(resultMem));
-            write_sd(data, resultSd);
-            data.writeInt32(flags);
-            data.writeStrongBinder(IInterface::asBinder(callback));
-            remote()->transact(7, data, &reply, 0);
-            return (int)read_reply_intptr(reply);
+            return -1;
         }
 
         // code 8: cancel(cookie) → int
@@ -380,24 +367,8 @@ namespace android
             return NO_ERROR;
         }
         case 7:
-        {
-            // process(paramMem, paramSd, sp<IBinder>, resultMem, resultSd, flags, cb) → int
-            if (!data.checkInterface(this))
-                return -1;
-            sp<IMemory> paramMem = interface_cast<IMemory>(data.readStrongBinder());
-            cacao::ISerialize::SerializedData paramSd;
-            reconstruct_sd(data, paramMem, paramSd);
-            sp<IBinder> binder = data.readStrongBinder();
-            sp<IMemory> resultMem = interface_cast<IMemory>(data.readStrongBinder());
-            cacao::ISerialize::SerializedData resultSd;
-            reconstruct_sd(data, resultMem, resultSd);
-            int processFlags = data.readInt32();
-            sp<ICacaoProcessCallback> cb =
-                ICacaoProcessCallback::asInterface(data.readStrongBinder());
-            int ret = process(paramMem, paramSd, binder, resultMem, resultSd, processFlags, cb);
-            write_reply_intptr(reply, (intptr_t)ret);
-            return NO_ERROR;
-        }
+            // 舊 libbinder 傳輸不再支援（影片錄製改走 AIDL 的 processToSurface）
+            return UNKNOWN_TRANSACTION;
         case 8:
         {
             // cancel(cookie) → int

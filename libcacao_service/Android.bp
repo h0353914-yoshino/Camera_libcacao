@@ -24,14 +24,21 @@ cc_library_shared {
     // rebuilds in ../interfaces, which are system-side by default -- the
     // Sony prebuilts of the same name in yoshino-common are renamed
     // *_vendor_blob and stay vendor-only.
+    vendor: true,
+
     srcs: [
         "src/CacaoService.cpp",
+        "src/CacaoAidlServer.cpp",
     ],
 
     header_libs: [
         "libcacao_service_headers",
+        "libcacao_client_headers",
         "libcacao_process_ctrl_gateway_headers",
         "libbase_headers",
+        "libnativebase_headers",
+        "libsystem_headers",
+        "libcutils_headers",
     ],
 
     shared_libs: [
@@ -44,6 +51,9 @@ cc_library_shared {
         "libutils",
         "libui",
         "libbinder",
+        "libbinder_ndk",
+        "libnativewindow",
+        "android.hardware.common-V2-ndk",
         "libcutils",
         "liblog",
         "libcacao_client",
@@ -52,6 +62,13 @@ cc_library_shared {
         "vendor.somc.hardware.camera.cacao@3.0",
         "vendor.somc.hardware.camera.cacao@3.1",
     ],
+
+    static_libs: [
+        "vendor.somc.cacao-V1-ndk",
+        "libaidlcommonsupport",
+    ],
+
+    cflags: ["-DLIBCACAO_SOONG_BUILD"],
 
     version_script: "libcacao_service.map.txt",
 }

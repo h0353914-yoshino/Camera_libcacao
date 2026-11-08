@@ -17,6 +17,8 @@ cc_library_shared {
 
     // System (default): see libcacao_service/Android.bp for why cacaoserver
     // and this whole chain stay system-side now instead of vendor:true.
+    vendor: true,
+
     srcs: [
         "src/ProcessCtrlGatewayBase.cpp",
         "src/ProcessCtrlGateway.cpp",
@@ -25,6 +27,9 @@ cc_library_shared {
 
     header_libs: [
         "libcacao_process_ctrl_gateway_headers",
+        "libnativebase_headers",
+        "libsystem_headers",
+        "libcutils_headers",
     ],
 
     shared_libs: [
@@ -36,7 +41,7 @@ cc_library_shared {
         "libhidlbase",
         "libutils",
         "libbinder",
-        "libgui",
+        "libnativewindow",
         "liblog",
         "libcutils",
         "libcacao_pal",

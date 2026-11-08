@@ -24,6 +24,7 @@ cc_library_shared {
     // (libimageprocessorjni, libcacao_service, libcacao_process_ctrl_gateway)
     // is on the same partition now.
     compile_multilib: "both",
+    vendor_available: true,
 
     srcs: [
         "src/ICacaoService.cpp",
@@ -31,6 +32,7 @@ cc_library_shared {
         "src/ICacaoClient.cpp",
         "src/ICacaoProcessCallback.cpp",
         "src/Cacao.cpp",
+        "src/CacaoAidlClient.cpp",
         "src/SharedBuffer_ObjectBase.cpp",
         "src/ImageBuf.cpp",
         "src/ProcessFactory.cpp",
@@ -44,6 +46,10 @@ cc_library_shared {
 
     shared_libs: [
         "libbinder",
+        "libbinder_ndk",
+        "libnativewindow",
+        "libgui",
+        "android.hardware.common-V2-ndk",
         "libcutils",
         "libutils",
         "liblog",
@@ -57,12 +63,21 @@ cc_library_shared {
         "libcacao_pal",
     ],
 
+    static_libs: [
+        "vendor.somc.cacao-V1-ndk",
+        "libaidlcommonsupport",
+    ],
+
     cflags: [
         "-Os",
         "-Wno-unused-parameter",
+        "-DLIBCACAO_SOONG_BUILD",
     ],
 
     target: {
+        vendor: {
+            exclude_shared_libs: ["libgui"],
+        },
         android_arm: {
             version_script: "libcacao_client_arm.map.txt",
         },

@@ -9,10 +9,11 @@
 //   code 4 → setConfig (vtable+0x1c)
 //   code 5 → getConfig (vtable+0x20)
 //   code 6 → process with ImageBuf (vtable+0x24)
-//   code 7 → process with IBinder (vtable+0x28)
+//   code 7 → process with ANativeWindow（原為 IGraphicBufferProducer 的 IBinder）
 //   code 8 → cancel (vtable+0x2c)
 
 #pragma once
+#include <android/native_window.h>
 #include <binder/IInterface.h>
 #include <binder/IMemory.h>
 #include <utils/Vector.h>
@@ -63,7 +64,7 @@ namespace android
         // vtable slot 10 — tx code 7
         virtual int process(const sp<IMemory> &paramMem,
                             cacao::ISerialize::SerializedData paramSd,
-                            const sp<IBinder> &binder,
+                            ANativeWindow *window,
                             const sp<IMemory> &resultMem,
                             cacao::ISerialize::SerializedData resultSd,
                             int flags,

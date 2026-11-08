@@ -268,7 +268,7 @@ namespace cacao
         /* createMode/Param/Result/Config — 依序列化資料建構對應物件 */
         static ProcessModeBase *createMode(ISerialize::SerializedData *data);
         static ProcessParamBase *createParam(ISerialize::SerializedData *data);
-        static ProcessParamBase *createParam(const android::sp<android::IBinder> &binder,
+        static ProcessParamBase *createParam(ANativeWindow *window,
                                              ISerialize::SerializedData *data);
         static ProcessResultBase *createResult(ISerialize::SerializedData *data);
         static ProcessConfigBase *createConfig(unsigned int configId,

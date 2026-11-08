@@ -60,7 +60,7 @@ namespace cacao
         static ICacaoGateway *createProcess();
         static ProcessModeBase *createMode(cacao::ISerialize::SerializedData *sd);
         static ProcessParamBase *createParam(cacao::ISerialize::SerializedData *sd);
-        static ProcessParamBase *createParam(const android::sp<android::IBinder> &binder,
+        static ProcessParamBase *createParam(ANativeWindow *window,
                                              cacao::ISerialize::SerializedData *sd);
         static ProcessResultBase *createResult(cacao::ISerialize::SerializedData *sd);
         static ProcessConfigBase *createConfig(unsigned int configId,
@@ -105,6 +105,7 @@ namespace android
         // CacaoService 自身方法
         void registerClient(const sp<Client> &client);
         void unregisterClient(const sp<IBinder> &binder);
+        void unregisterClient(const sp<ICacaoClient> &client);
 
         virtual status_t onTransact(uint32_t code, const Parcel &data,
                                     Parcel *reply, uint32_t flags = 0) override;
@@ -180,7 +181,7 @@ namespace android
                                 const sp<ICacaoProcessCallback> &callback) override;
             virtual int process(const sp<IMemory> &paramMem,
                                 ::cacao::ISerialize::SerializedData paramSd,
-                                const sp<IBinder> &binder,
+                                ANativeWindow *window,
                                 const sp<IMemory> &resultMem,
                                 ::cacao::ISerialize::SerializedData resultSd,
                                 int flags,

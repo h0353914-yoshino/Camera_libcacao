@@ -1,0 +1,37 @@
+aidl_interface {
+    name: "vendor.somc.cacao",
+    vendor_available: true,
+    owner: "sony",
+    stability: "vintf",
+    srcs: ["vendor/somc/cacao/*.aidl"],
+    local_include_dir: "",
+    include_dirs: ["frameworks/native/aidl/gui"],
+    imports: ["android.hardware.common-V2"],
+    backend: {
+        ndk: {
+            enabled: true,
+            additional_shared_libraries: ["libnativewindow"],
+        },
+        java: {
+            enabled: false,
+        },
+        cpp: {
+            enabled: false,
+        },
+    },
+    frozen: true,
+    versions_with_info: [
+        {
+            version: "1",
+            imports: ["android.hardware.common-V2"],
+        },
+    ],
+
+}
+
+// VINTF 宣告：@VintfStability 的服務必須在 VINTF manifest 中宣告，servicemanager 才允許註冊。
+vintf_fragment {
+    name: "vendor.somc.cacao.xml",
+    src: "vendor.somc.cacao.xml",
+    vendor: true,
+}

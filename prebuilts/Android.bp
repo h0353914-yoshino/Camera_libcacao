@@ -22,10 +22,7 @@ cc_prebuilt_library_shared {
     // System (default): cacaoserver and its whole libcacao_* chain are
     // system-side again (see libcacao_service/Android.bp), so libcacao_pal
     // no longer needs to be dual-available.
-    vendor: false,
-    vendor_available: false,
-    product_specific: false,
-    product_available: false,
+    vendor_available: true,
 }
 
 // vendor.somc.hardware.camera.{provider@1.0,cacao@3.0,cacao@3.1} intentionally

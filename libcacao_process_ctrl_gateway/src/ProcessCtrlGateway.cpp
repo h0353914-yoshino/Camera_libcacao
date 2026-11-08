@@ -7,8 +7,7 @@
 #include <cacao/ProcessCtrlGateway.h>
 #include <vendor/somc/hardware/camera/provider/1.0/IVendorSomcCameraProvider.h>
 #include <hidl/HidlTransportSupport.h>
-#include <gui/Surface.h>
-#include <gui/IGraphicBufferProducer.h>
+#include <android/native_window.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -374,7 +373,10 @@ namespace cacao
     {
         // REF so_32 Ghidra 0x1a220: ~sp<IGraphicBufferProducer>(this+0x160)
         // createParam() 用 sp<> assignment (incStrong)，dtor 必須對應呼叫 ~sp (decStrong)
-        reinterpret_cast<sp<android::IGraphicBufferProducer> *>(_extra)->~sp();
+        // 持有的是 ANativeWindow 的一份參考（createParam 時 ANativeWindow_acquire）
+        ANativeWindow *w = *reinterpret_cast<ANativeWindow **>(_extra);
+        if (w)
+            ANativeWindow_release(w);
     }
 
     ProcessParamBase *ProcessCtrlVideoRecParam::clone() const
@@ -401,8 +403,13 @@ namespace cacao
         // 修正：使用 sp<> assignment 正確複製 GBP（呼叫 incStrong）
         // memcpy 會複製原始指標而不增加 refcount，原始 param 析構後 GBP 被釋放
         // 導致 clone 持有懸空指標 → Surface::dequeueBuffer 呼叫 __cxa_pure_virtual 崩潰
-        *reinterpret_cast<sp<android::IGraphicBufferProducer> *>(_extra) =
-            *reinterpret_cast<const sp<android::IGraphicBufferProducer> *>(s->_extra);
+        ANativeWindow *srcWin = *reinterpret_cast<ANativeWindow *const *>(s->_extra);
+        if (srcWin)
+            ANativeWindow_acquire(srcWin);
+        ANativeWindow **dstWin = reinterpret_cast<ANativeWindow **>(_extra);
+        if (*dstWin)
+            ANativeWindow_release(*dstWin);
+        *dstWin = srcWin;
         _extra[1] = s->_extra[1];
         _extra[2] = s->_extra[2];
         _extra[3] = s->_extra[3];
@@ -2438,10 +2445,10 @@ namespace cacao
         const char *errMsg;
         int errLine;
 
-        sp<android::IGraphicBufferProducer> gbp =
-            *reinterpret_cast<sp<android::IGraphicBufferProducer> *>(
+        ANativeWindow *paramWindow =
+            *reinterpret_cast<ANativeWindow **>(
                 reinterpret_cast<uint8_t *>(param) + 0x160);
-        if (!gbp.get())
+        if (!paramWindow)
         {
             PAL_LogPrint(__FILE__, __LINE__, 0x100, 1, "Buffer producer not found");
             ret = (int)0xffffff98u; // -0x68
@@ -2457,9 +2464,8 @@ namespace cacao
             // 寫入超出配置範圍，造成 heap 損毀（實測：錄影開始時 cacaoserver 於
             // Surface 建構子內 SIGSEGV）。改回直接 `new`，交給編譯器用它實際連結
             // 的（正確的）Surface 標頭決定大小。
-            sp<android::Surface> surface = new android::Surface(gbp, true);
-
-            ANativeWindow *w = surface.get();
+            // 視窗由呼叫端（AIDL 的 android.view.Surface）提供，不再於此用 libgui 建立 Surface。
+            ANativeWindow *w = paramWindow;
             sp<ANativeWindow> surfSp = w;
 
             if (!surfSp.get())
@@ -3106,7 +3112,7 @@ namespace cacao
      * alloc 0x170 bytes, ProcessCtrlVideoRecParam ctor, deserialize,
      * 然後 asInterface(binder) 取得 IGraphicBufferProducer sp */
     ProcessParamBase *ProcessCtrlGatewayFactory::createParam(
-        const android::sp<android::IBinder> &binder, ISerialize::SerializedData *data)
+        ANativeWindow *window, ISerialize::SerializedData *data)
     {
         void *mem = ObjectBase::operator new(0x170);
         if (!mem)
@@ -3118,13 +3124,11 @@ namespace cacao
             int ret = param->deserialize(data);
             if (ret >= 0)
             {
-                // asInterface: 取得 IGraphicBufferProducer
-                sp<android::IGraphicBufferProducer> producer =
-                    android::IGraphicBufferProducer::asInterface(binder);
-                // 寫入 +0x160
-                *reinterpret_cast<sp<android::IGraphicBufferProducer> *>(p + 0x160) = producer;
-                if (*reinterpret_cast<void **>(p + 0x160) != nullptr)
+                // 寫入 +0x160：持有一份 ANativeWindow 參考
+                if (window != nullptr)
                 {
+                    ANativeWindow_acquire(window);
+                    *reinterpret_cast<ANativeWindow **>(p + 0x160) = window;
                     return param;
                 }
                 PAL_LogPrint(__FILE__, __LINE__, 0x100, 1, "Buffer producer cannot be got");
@@ -3184,13 +3188,10 @@ namespace cacao
  * 原始 .so 包含這些 sp<> 函式但編譯器通常會 inline
  * 明確實例化以匹配原始 symtab
  * ─────────────────────────────────────────────────────────── */
-#include <gui/IGraphicBufferProducer.h>
-
 namespace V30_ = vendor::somc::hardware::camera::cacao::V3_0;
 namespace V31_ = vendor::somc::hardware::camera::cacao::V3_1;
 namespace VProv_ = vendor::somc::hardware::camera::provider::V1_0;
 
-template class android::sp<android::IGraphicBufferProducer>;
 template class android::sp<V30_::ICacao>;
 template class android::sp<V31_::ICacao>;
 template class android::sp<V30_::ICacaoCallback>;
@@ -3206,8 +3207,6 @@ template class android::sp<ANativeWindow>;
 template android::sp<ANativeWindow> &android::sp<ANativeWindow>::operator=(ANativeWindow *);
 template android::sp<ANativeWindow> &android::sp<ANativeWindow>::operator=(const android::sp<ANativeWindow> &);
 #endif
-// sp<ANativeWindow>::operator=<Surface> (template member)
-template android::sp<ANativeWindow> &android::sp<ANativeWindow>::operator= <android::Surface>(android::Surface *);
 
 // sp<ICacaoCallback> converting ctor from Callback*
 template android::sp<V30_::ICacaoCallback>::sp(cacao::ProcessCtrlGateway::Callback *);

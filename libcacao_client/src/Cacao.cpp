@@ -11,6 +11,11 @@
 #include <binder/IInterface.h>
 #include <binder/IBinder.h>
 #include <binder/IMemory.h>
+#include <cacao/CacaoAidlClient.h>
+#ifndef __ANDROID_VENDOR__
+#include <gui/IGraphicBufferProducer.h>
+#include <gui/Surface.h>
+#endif
 #include <binder/MemoryBase.h>
 #include <binder/MemoryHeapBase.h>
 #include <binder/IServiceManager.h>
@@ -127,9 +132,12 @@ namespace android
         if (Cacao::mService != nullptr)
         {
             sp<IBinder> binder = IInterface::asBinder(Cacao::mService);
-            binder->unlinkToDeath(
-                wp<IBinder::DeathRecipient>(Cacao::mDeathNotifier),
-                nullptr, 0);
+            if (binder != nullptr)
+            {
+                binder->unlinkToDeath(
+                    wp<IBinder::DeathRecipient>(Cacao::mDeathNotifier),
+                    nullptr, 0);
+            }
             Cacao::mDeathNotifier.clear();
         }
         Cacao::mService.clear();
@@ -307,6 +315,10 @@ namespace android
         {
             binder->linkToDeath(sp<IBinder::DeathRecipient>(this), nullptr, 0);
         }
+        else
+        {
+            cacaoAidlLinkCacaoDeath(mCacao);
+        }
         pthread_mutex_unlock(&mLock);
         return 0;
     }
@@ -329,6 +341,10 @@ namespace android
             {
                 binder->unlinkToDeath(
                     wp<IBinder::DeathRecipient>(this), nullptr, 0);
+            }
+            else
+            {
+                cacaoAidlUnlinkCacaoDeath(mCacao);
             }
             mCacao->disconnect();
             mCacao.clear();
@@ -721,8 +737,18 @@ namespace android
         }
         if (ret >= 0 && resultMem != nullptr)
         {
-            ret = mCacao->process(paramMem, paramSd, binder,
+#ifndef __ANDROID_VENDOR__
+            // JNI 傳進來的是 IGraphicBufferProducer 的 binder；轉成 Surface（ANativeWindow）
+            // 後經 AIDL 的 android.view.Surface 傳給 server。
+            sp<IGraphicBufferProducer> gbp = interface_cast<IGraphicBufferProducer>(binder);
+            sp<Surface> surface;
+            if (gbp != nullptr)
+                surface = new Surface(gbp, true);
+            ret = mCacao->process(paramMem, paramSd, surface.get(),
                                   resultMem, resultSd, 0, cb);
+#else
+            ret = -1;
+#endif
             if (ret != 0)
             {
                 if (ret != -0x6e)
@@ -794,43 +820,33 @@ namespace android
     //   mutex_unlock(mLock)
     // ══════════════════════════════════════════════════════════════
 
+    // AIDL 服務死亡通知（取代 DeathNotifier::binderDied 的 binder 版本）
+    static void onAidlServiceDied()
+    {
+        pthread_mutex_lock(&Cacao::mServiceLock);
+        Cacao::mService.clear();
+        Cacao::mDeathNotifier.clear();
+        Cacao::mServicePid = 0;
+        ALOGI("cacao service died");
+        pthread_mutex_unlock(&Cacao::mServiceLock);
+    }
+
     void Cacao::getService()
     {
         pthread_mutex_lock(&mServiceLock);
         if (mService == nullptr)
         {
-            sp<IServiceManager> sm = defaultServiceManager();
-            if (sm == nullptr)
-            {
-                ALOGE("getService: failed to get ServiceManager");
-                pthread_mutex_unlock(&mServiceLock);
-                return;
-            }
-            sp<IBinder> binder;
-            for (unsigned int i = 1; i <= 10; i++)
-            {
-                binder = sm->getService(String16("cacao"));
-                if (binder != nullptr)
-                    break;
-                usleep(500000);
-                ALOGI("getService: waiting for cacao service... (%u)", i);
-            }
-            if (binder == nullptr)
+            mService = cacaoAidlGetService(onAidlServiceDied);
+            if (mService == nullptr)
             {
                 ALOGE("getService: cacao service not found");
             }
             else
             {
-                mService = ICacaoService::asInterface(binder);
-                if (mService != nullptr)
+                mServicePid = mService->getServicePid();
+                if (mDeathNotifier == nullptr)
                 {
-                    mServicePid = mService->getServicePid();
-                    if (mDeathNotifier == nullptr)
-                    {
-                        mDeathNotifier = new DeathNotifier();
-                        binder->linkToDeath(
-                            sp<IBinder::DeathRecipient>(mDeathNotifier), nullptr, 0);
-                    }
+                    mDeathNotifier = new DeathNotifier();
                 }
             }
         }
