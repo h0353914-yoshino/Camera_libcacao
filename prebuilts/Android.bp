@@ -19,9 +19,8 @@ cc_prebuilt_library_shared {
     prefer: true,
     stl: "none",
 
-    // System (default): cacaoserver and its whole libcacao_* chain are
-    // system-side again (see libcacao_service/Android.bp), so libcacao_pal
-    // no longer needs to be dual-available.
+    // libcacao_pal 同時供 system 端（libcacao_client）與 vendor 端
+    // （libcacao_service、process_ctrl_gateway、cacaoserver）使用，因此保留 vendor_available。
     vendor_available: true,
 }
 
@@ -30,6 +29,6 @@ cc_prebuilt_library_shared {
 // against (vendor/sony/camera, wired into yoshino-common), those exact same
 // prebuilt blobs are already defined there and reused as-is by
 // libcacao_process_ctrl_gateway/libcacao_service (now marked
-// vendor_available in yoshino-common so system-side cacaoserver can reach
-// them too — see the comment there). Defining them again here would just be
+// vendor_available in yoshino-common so the vendor cacaoserver chain can link
+// them — see the comment there). Defining them again here would just be
 // a same-name duplicate module conflict.

@@ -15,15 +15,9 @@ cc_library_shared {
 
     defaults: ["libcacao_32bit_build_defaults"],
 
-    // System (default): cacaoserver must stay system-side so its libbinder
-    // defaults to /dev/binder, matching the app-facing service_manager
-    // SemcCameraUI actually looks in (a vendor:true cacaoserver links
-    // vendor libbinder, which defaults to /dev/vndbinder instead -- the
-    // app can never find it there, confirmed on-device). The
-    // vendor.somc.hardware.camera.* HIDL libs below are the hidl-gen
-    // rebuilds in ../interfaces, which are system-side by default -- the
-    // Sony prebuilts of the same name in yoshino-common are renamed
-    // *_vendor_blob and stay vendor-only.
+    // cacaoserver 與本模組在 vendor 分割區執行（vendor: true），
+    // 服務以 stable AIDL（libbinder_ndk）發佈於
+    // vendor.somc.cacao.ICacaoService/default，由 VINTF 片段宣告。
     vendor: true,
 
     srcs: [
