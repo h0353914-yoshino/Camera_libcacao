@@ -468,8 +468,9 @@ build:
         plane_w, plane_h, plane_w, plane_h, gralloc_format,
         ((static_cast<uint32_t>(format) >> 26) & 1u) ? 0 : 1,
         static_cast<unsigned int>(src[1]),
-        static_cast<gralloc1_producer_usage_t>(0x3b),
-        static_cast<gralloc1_consumer_usage_t>(0));
+        // commonsys-intf 的 private_handle_t 只有單一 usage 欄位，
+        // 取原版 producer_usage=0x3b；consumer_usage=0 不另外保存。
+        static_cast<uint64_t>(0x3b));
 
     // 原版 puVar5[0xe] = *param_5，也就是 offset 要填 src5[0]（建構子預設 0）。
     // 先前這裡漏掉，offset 永遠是 0——但實測 GOLD 值可以是 0x6000

@@ -27,7 +27,10 @@ cc_library_shared {
     // 這顆只在 A15（Soong）建置，所以拿到的一定是這棵樹的 gralloc 標頭；
     // numInts / magic / layer_count 等欄位交給它的建構子填，CAF 改佈局時
     // 會自動跟著對。
-    include_dirs: ["hardware/qcom-caf/msm8998/display/gralloc"],
+    include_dirs: [
+        "hardware/qcom-caf/sdm660/display/gralloc",
+        "vendor/qcom/opensource/commonsys-intf/display/gralloc",
+    ],
 
     shared_libs: [
         "liblog",
