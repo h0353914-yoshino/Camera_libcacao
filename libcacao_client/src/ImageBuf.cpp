@@ -544,22 +544,60 @@ namespace cacao
                              static_cast<int32_t>(ibWidth(this)),
                              static_cast<int32_t>(ibHeight(this))};
 
-        mMapper->lock(ibHandle(this),
-                      0x66, // GRALLOC_USAGE_SW_READ_OFTEN | SW_WRITE_OFTEN
-                      region, fence,
-                      [&](MapperError err, void *data)
-                      {
-                          if (err == MapperError::NONE)
+        // Android 17 的 mapper@2.0 passthrough 以 GrallocImportedBufferPool 驗證 buffer，
+        // 未經 importBuffer 的 native_handle 會回 BAD_BUFFER；舊版直接把指標當 handle 使用。
+        // 對未擁有（未匯入）的 handle 先匯入再 lock，並改為擁有匯入後的 buffer。
+        bool badBuffer = false;
+        auto doLock = [&]()
+        {
+            mMapper->lock(ibHandle(this),
+                          0x66, // GRALLOC_USAGE_SW_READ_OFTEN | SW_WRITE_OFTEN
+                          region, fence,
+                          [&](MapperError err, void *data)
                           {
-                              mapped = data;
-                          }
-                          else
-                          {
-                              ALOGE("ImageBuf::clearCache: IMapper::lock failed err=%d hdl=%p",
-                                    (int)err, ibHandle(this));
-                              rc = -0x6f;
-                          }
-                      });
+                              if (err == MapperError::NONE)
+                              {
+                                  mapped = data;
+                                  rc = 0;
+                              }
+                              else
+                              {
+                                  badBuffer = (err == MapperError::BAD_BUFFER);
+                                  if (!badBuffer || ibOwn(this) != 0)
+                                  {
+                                      ALOGE("ImageBuf::clearCache: IMapper::lock failed err=%d hdl=%p",
+                                            (int)err, ibHandle(this));
+                                  }
+                                  rc = -0x6f;
+                              }
+                          });
+        };
+        doLock();
+        if (rc < 0 && badBuffer && ibOwn(this) == 0)
+        {
+            android::hardware::hidl_handle raw;
+            raw.setTo(static_cast<native_handle_t *>(ibHandle(this)), false);
+            void *imported = nullptr;
+            mMapper->importBuffer(raw,
+                                  [&](MapperError err, void *h)
+                                  {
+                                      if (err == MapperError::NONE)
+                                      {
+                                          imported = h;
+                                      }
+                                      else
+                                      {
+                                          ALOGE("ImageBuf::clearCache: IMapper::importBuffer failed err=%d", (int)err);
+                                      }
+                                  });
+            if (imported != nullptr)
+            {
+                ibHandle(this) = imported;
+                ibOwn(this) = 0x01;
+                rc = 0;
+                doLock();
+            }
+        }
 
         if (rc < 0)
             return;
