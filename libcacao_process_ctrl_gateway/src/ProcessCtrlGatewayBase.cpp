@@ -587,15 +587,21 @@ namespace cacao
         return err;
     }
 
+    /* 檔案層級全域物件 — 對應 _GLOBAL__sub_I_cacao_process_ctrl_base.cpp：
+     *   DAT_00024004 gGatewayLock、DAT_0002408c gStopMutex、
+     *   DAT_00024114 gStopCond（綁 gStopMutex）。原版只有 stop() 使用。 */
+    static cacao_pal::Mutex gGatewayLock;
+    static cacao_pal::Mutex gStopMutex;
+    static cacao_pal::Condition gStopCond(gStopMutex);
+
     /* stop — 對應 Ghidra GatewayBase_stop_1_00018274 */
     int ProcessCtrlGatewayBase::stop()
     {
-        // Ghidra: Mutex::lock() first, then tryLock another
-        cacao_pal::Mutex &rlMutex = *reinterpret_cast<cacao_pal::Mutex *>(
-            reinterpret_cast<uint8_t *>(&mRequests) + 0x04);
-        cacao_pal::Condition &rlCond = *reinterpret_cast<cacao_pal::Condition *>(
-            reinterpret_cast<uint8_t *>(&mRequests) + 0x9c);
+        cacao_pal::Mutex &rlMutex = gStopMutex;
+        cacao_pal::Condition &rlCond = gStopCond;
+        cacao_pal::Mutex &mMutex = gGatewayLock;
 
+        int err;
         rlMutex.lock();
         unsigned int retryCount = 0xFFFFFFFF;
         int lockResult = mMutex.tryLock();
@@ -623,6 +629,7 @@ namespace cacao
                     cln.dest = mQueId;
                     cln.size = 0x18;
                     PAL_MsgSend(reinterpret_cast<PAL_Msg_t *>(&cln));
+                    err = lockResult;
                     goto done_stop;
                 }
                 lockResult = mMutex.tryLock();
@@ -633,7 +640,7 @@ namespace cacao
         {
             cacao_pal::AutoLock lock(mStateMutex);
             unsigned int initFlag = (unsigned int)mInitFlag;
-            int err = (int)0xffffff9bu;
+            err = (int)0xffffff9bu;
 
             if ((initFlag & ~1u) == 2u)
             {
@@ -705,7 +712,7 @@ namespace cacao
         rlMutex.unlock();
 
     done_stop:
-        return PAL_ERR_OK;
+        return err;
     }
 
     /* setConfig — 對應 Ghidra GatewayBase_setConfig_1_00018532 */
