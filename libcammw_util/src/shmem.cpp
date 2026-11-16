@@ -463,8 +463,14 @@ build:
     // 原版 0x482c：bic.w r1, r3, r5, lsr #26（r3=1、r5=format）決定 buffer_type；
     // 0x484a 從 literal pool 搬進 +0x60 的是 producer_usage=0x3b、
     // consumer_usage=0；0x4848 寫 layer_count=1。
+    // a17 相容修復：這個 handle 交給 gralloc 擁有（不標 PRIV_FLAGS_CLIENT_ALLOCATED）。
+    // 原版把它標成 client allocated，gralloc 歸零時不會 delete，由本程式自己在
+    // detach 時 delete。但 Adreno 的 EGLImage 會對同一個 handle 指標再 retain 一次，
+    // 之後 EGLImage 才被銷毀，gralloc 的 FreeBuffer 就會讀到我們已經釋放的記憶體，
+    // 導致 Scudo "invalid chunk state when deallocating"。改由 gralloc 在最後一次
+    // release 時負責 delete，生命週期就跟著 retain 計數走。
     auto *handle = new private_handle_t(
-        fd, fd_metadata, private_handle_t::PRIV_FLAGS_CLIENT_ALLOCATED,
+        fd, fd_metadata, 0,
         plane_w, plane_h, plane_w, plane_h, gralloc_format,
         ((static_cast<uint32_t>(format) >> 26) & 1u) ? 0 : 1,
         static_cast<unsigned int>(src[1]),
@@ -608,6 +614,9 @@ extern "C" int cammw_util_shmem_detach_image_buf(int32_t *buf)
   // 現在 attach 用 private_handle_t 的建構子填本機 NumInts()，retain 會成功、
   // handle 進到 gralloc 的 handles_map_，release 就會把兩個 ion fd 收乾淨，
   // 不需要（也不可以）再自己關，否則是 double close。
+  // handle 由 gralloc 擁有（見 attach 的說明），release 成功後不可再 delete。
+  // 只有 gralloc 沒有接手（沒有 device 或 release 失敗）時才由這裡釋放。
+  bool gralloc_owns = false;
   if (device != nullptr)
   {
     uint32_t release_rc = g_release_func(device, reinterpret_cast<buffer_handle_t>(handle));
@@ -615,8 +624,12 @@ extern "C" int cammw_util_shmem_detach_image_buf(int32_t *buf)
     {
       ALOGE("E: %s: g_release_func failed %u", __FUNCTION__, release_rc);
     }
+    else
+    {
+      gralloc_owns = true;
+    }
   }
-  if (handle != nullptr)
+  if (handle != nullptr && !gralloc_owns)
   {
     delete handle;
   }
